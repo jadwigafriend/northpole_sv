@@ -9,7 +9,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const PORT = 3000;
+const PORT = process.env.PORT;
 const STEAM_API_KEY = "YOUR_STEAM_API_KEY"; // 🔁 Replace this with your actual key
 
 let clientCounter = 1;
