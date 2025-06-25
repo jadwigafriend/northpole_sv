@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>GMod RemoteExec GUI</title>
+    <style>
+        body {
+            background: #1e1e1e;
+            color: #e0e0e0;
+            font-family: monospace;
+            padding: 20px;
+        }
+        textarea, select, input, button {
+            font-family: monospace;
+            font-size: 14px;
+            margin: 5px 0;
+        }
+        textarea { width: 100%; height: 150px; background: #2e2e2e; color: #eee; }
+        select, input[type="number"] { background: #333; color: #fff; padding: 5px; }
+        button { padding: 6px 12px; margin-right: 10px; }
+        #history, #clients {
+            margin-top: 20px;
+            background: #111;
+            padding: 10px;
+            border: 1px solid #444;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h2>GMod Remote Lua Exec</h2>
+
+    <label>Presets:</label>
+    <select id="presets" onchange="loadPreset(this.value)">
+        <option value="">-- Select a preset --</option>
+        <option value="print">Print</option>
+        <option value="jump">Jump</option>
+        <option value="sound">Play Sound</option>
+    </select><br>
+
+    <textarea id="code" placeholder="Enter Lua code..."></textarea><br>
+    <label>Delay (sec): <input type="number" id="delay" value="3"></label><br>
+    <button onclick="sendCode()">Send</button>
+    <button onclick="exportHistory()">Export</button>
+    <button onclick="importHistory()">Import</button>
+    <input type="file" id="importFile" style="display:none">
+
+    <p id="status"></p>
+
+    <div id="clients"><b>Connected Clients:</b></div>
+    <div id="history"><b>Command History:</b></div>
+
+    <script>
+        const presetMap = {
+            print: `chat.AddText(Color(0, 255, 0), "[RemoteExec] Hello!")`,
+            jump: `LocalPlayer():ConCommand("+jump")\ntimer.Simple(0.2, function() LocalPlayer():ConCommand("-jump") end)`,
+            sound: `surface.PlaySound("buttons/button15.wav")`
+        };
+
+        function loadPreset(key) {
+            if (presetMap[key]) {
+                document.getElementById("code").value = presetMap[key];
+            }
+        }
+
+        function sendCode() {
+            const code = document.getElementById("code").value.trim();
+            const delay = parseInt(document.getElementById("delay").value) || 0;
+
+            fetch("/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code, delay })
+            }).then(() => {
+                document.getElementById("status").textContent = "✔️ Sent.";
+                loadHistory();
+            }).catch(err => {
+                document.getElementById("status").textContent = "❌ Error: " + err;
+            });
+        }
+
+        function loadClients() {
+    fetch("/clients").then(res => res.json()).then(clients => {
+        const container = document.getElementById("clients");
+        container.innerHTML = "<b>Connected Clients:</b><br>";
+        clients.forEach(client => {
+            const input = `<input type="text" placeholder="Alias" value="${client.alias || ""}" onchange="updateAlias('${client.id}', this.value)" style="margin-left:10px;">`;
+            const btn = `<button onclick="terminate('${client.id}')">Terminate</button>`;
+            container.innerHTML += `<div>
+                <b>${client.steamName}</b> (${client.playerName})<br>
+                <code>${client.steamID}</code> | ID: <code>${client.id}</code> ${btn} ${input}
+            </div><br>`;
+        });
+    });
+}
+
+
+
+        function terminate(clientId) {
+            fetch("/terminate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ clientId })
+            }).then(() => {
+                loadClients();
+                document.getElementById("status").textContent = "🛑 Client terminated.";
+            });
+        }
+
+        function loadHistory() {
+            fetch("/history").then(res => res.json()).then(history => {
+                const container = document.getElementById("history");
+                container.innerHTML = "<b>Command History:</b><br>";
+                history.slice().reverse().forEach(h => {
+                    container.innerHTML += `[${h.timestamp}] Delay: ${h.delay}s<br><code>${h.code}</code><br><br>`;
+                });
+            });
+        }
+
+        function exportHistory() {
+            fetch("/history").then(res => res.json()).then(history => {
+                const blob = new Blob([JSON.stringify(history, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "remoteexec_history.json";
+                a.click();
+            });
+        }
+
+        function updateAlias(clientId, alias) {
+    fetch("/alias", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, alias })
+    }).then(() => {
+        document.getElementById("status").textContent = "🔖 Alias updated.";
+    });
+}
+
+
+        function importHistory() {
+            const input = document.getElementById("importFile");
+            input.click();
+            input.onchange = () => {
+                const file = input.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const parsed = JSON.parse(reader.result);
+                    fetch("/send", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(parsed[parsed.length - 1]) // sends the last command
+                    });
+                };
+                reader.readAsText(file);
+            };
+        }
+
+        setInterval(() => {
+            loadClients();
+            loadHistory();
+        }, 3000);
+
+        window.onload = () => {
+            loadClients();
+            loadHistory();
+        };
+    </script>
+</body>
+</html>
