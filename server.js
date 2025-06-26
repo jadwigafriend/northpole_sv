@@ -89,11 +89,44 @@ app.post("/send", (req, res) => {
     const { code, delay } = req.body;
     if (!code || typeof code !== "string") return res.status(400).send("Invalid code.");
 
+    const now = Date.now(); // ms
+    const sentAt = now / 1000; // float seconds
+    const delaySec = delay || 0;
+
     const payload = {
-        id: "cmd_" + Date.now(),
-        run_at: Math.floor(Date.now() / 1000) + (delay || 0),
+        id: "cmd_" + now,
+        run_at: Math.floor(sentAt + delaySec),
+        sent_at: sentAt,
         code
     };
+
+    const entry = {
+        code,
+        delay: delaySec,
+        timestamp: new Date().toISOString()
+    };
+
+    const json = JSON.stringify(payload);
+    for (const [, client] of clients.entries()) {
+        try {
+            client.socket.send(json);
+        } catch (err) {
+            console.warn(`Failed to send to ${client.clientId}:`, err);
+        }
+    }
+
+    logCommand(entry);
+    res.send("OK");
+});
+
+
+const payload = {
+    id: "cmd_" + now,
+    run_at: Math.floor(sentAt + delaySec),
+    sent_at: sentAt,
+    code
+};
+
 
     const entry = {
         code,
