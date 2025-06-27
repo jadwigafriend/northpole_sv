@@ -10,7 +10,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT;
-const STEAM_API_KEY = "YOUR_STEAM_API_KEY"; // 🔁 Replace this with your actual key
+const STEAM_API_KEY = "YOUR_STEAM_API_KEY"; // Replace with your actual key
 
 let clientCounter = 1;
 const clients = new Map(); // clientId -> { socket, steamID, playerName, steamName, alias }
@@ -38,12 +38,14 @@ async function resolveSteamName(steamID) {
 function logCommand(entry) {
     const log = `[${entry.timestamp}] Delay: ${entry.delay}s\n${entry.code}\n\n`;
     fs.appendFileSync(LOG_FILE, log);
+
     let history = [];
     if (fs.existsSync(HISTORY_FILE)) {
         try {
             history = JSON.parse(fs.readFileSync(HISTORY_FILE, "utf-8"));
         } catch {}
     }
+
     history.push(entry);
     fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
 }
@@ -85,7 +87,6 @@ wss.on("connection", (ws) => {
 });
 
 // POST /send — broadcast Lua code to all clients
-
 app.post("/send", (req, res) => {
     const { code, delay } = req.body;
     if (!code || typeof code !== "string") {
@@ -93,7 +94,7 @@ app.post("/send", (req, res) => {
     }
 
     const now = Date.now(); // milliseconds
-    const sentAt = now / 1000; // seconds (float)
+    const sentAt = now / 1000; // float seconds
     const delaySec = delay || 0;
 
     const payload = {
@@ -123,35 +124,6 @@ app.post("/send", (req, res) => {
     res.send("OK");
 });
 
-
-
-const payload = {
-    id: "cmd_" + now,
-    run_at: Math.floor(sentAt + delaySec),
-    sent_at: sentAt,
-    code
-};
-
-
-    const entry = {
-        code,
-        delay: delay || 0,
-        timestamp: new Date().toISOString()
-    };
-
-    const json = JSON.stringify(payload);
-    for (const [, client] of clients.entries()) {
-        try {
-            client.socket.send(json);
-        } catch (err) {
-            console.warn(`Failed to send to ${client.clientId}:`, err);
-        }
-    }
-
-    logCommand(entry);
-    res.send("OK");
-});
-
 // POST /terminate — send kill signal and disconnect a client
 app.post("/terminate", (req, res) => {
     const { clientId } = req.body;
@@ -169,16 +141,17 @@ app.post("/terminate", (req, res) => {
     }
 });
 
-// POST /alias — set custom alias for a client
+// POST /alias — set alias for a client
 app.post("/alias", (req, res) => {
     const { clientId, alias } = req.body;
     const client = clients.get(clientId);
     if (!client) return res.status(404).send("Client not found");
+
     client.alias = alias || "";
     res.send("Alias set");
 });
 
-// GET /clients — return metadata for each connected client
+// GET /clients — return metadata for each client
 app.get("/clients", (req, res) => {
     const result = [];
     for (const [id, info] of clients.entries()) {
@@ -193,7 +166,7 @@ app.get("/clients", (req, res) => {
     res.json(result);
 });
 
-// GET /history — get command history
+// GET /history — return command history
 app.get("/history", (req, res) => {
     if (fs.existsSync(HISTORY_FILE)) {
         try {
